@@ -1,24 +1,32 @@
+
 import 'package:flutter/material.dart';
+import 'package:web/web.dart' as web;
 
 import '../models/video.dart';
 import '../screens/videoscreen.dart';
-import 'package:web/web.dart' as web;
+import '../services/api_service.dart';
 
 class VideoCard extends StatelessWidget {
   final Video video;
 
-  const VideoCard({super.key, required this.video});
+  const VideoCard({
+    super.key,
+    required this.video,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl =
+        '${ApiService.baseUrl}/images/proxy?url=${Uri.encodeComponent(video.thumbnail)}';
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
-        // print('CARD CLICKED: ${video.title}');
-
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => VideoScreen(video: video)),
+          MaterialPageRoute(
+            builder: (context) => VideoScreen(video: video),
+          ),
         );
       },
       child: Column(
@@ -27,24 +35,26 @@ class VideoCard extends StatelessWidget {
           AspectRatio(
             aspectRatio: 16 / 9,
             child: ClipRRect(
-  borderRadius: BorderRadius.circular(10),
-  child: HtmlElementView.fromTagName(
-    tagName: 'img',
-    onElementCreated: (element) {
-      final image = element as web.HTMLImageElement;
+              borderRadius: BorderRadius.circular(10),
+              child: HtmlElementView.fromTagName(
+                tagName: 'img',
+                onElementCreated: (element) {
+                  final image = element as web.HTMLImageElement;
 
-      image
-        ..src = video.thumbnail
-        ..alt = video.title
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..style.objectFit = 'cover'
-        ..style.pointerEvents = 'none';
-    },
-  ),
-),
+                  image
+                    ..src = imageUrl
+                    ..alt = video.title
+                    ..style.width = '100%'
+                    ..style.height = '100%'
+                    ..style.objectFit = 'cover'
+                    ..style.pointerEvents = 'none';
+                },
+              ),
+            ),
           ),
+
           const SizedBox(height: 8),
+
           Text(
             video.title,
             maxLines: 2,
@@ -54,12 +64,17 @@ class VideoCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+
           const SizedBox(height: 4),
+
           Text(
             '${video.views} views • ${video.duration}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+            ),
           ),
         ],
       ),

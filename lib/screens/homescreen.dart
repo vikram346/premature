@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/video.dart';
@@ -18,15 +20,19 @@ class _HomeScreenState extends State<HomeScreen> {
   final ApiService apiService = ApiService();
 
   List<Video> videos = [];
+
   String searchQuery = '';
 
   int currentPage = 1;
+  int _requestVersion = 0;
 
   bool isLoading = true;
   bool isLoadingMore = false;
   bool hasNextPage = true;
 
   String? errorMessage;
+
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -47,18 +53,28 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> loadVideos() async {
+  Future<void> loadVideos({String? query}) async {
+    final requestVersion = ++_requestVersion;
+    final currentQuery = (query ?? searchQuery).trim();
+
     setState(() {
       isLoading = true;
+      isLoadingMore = false;
       errorMessage = null;
       currentPage = 1;
       hasNextPage = true;
+      videos = [];
     });
 
     try {
-      final result = await apiService.getVideos(page: 1);
+      final result = currentQuery.isEmpty
+          ? await apiService.getVideos(page: 1)
+          : await apiService.searchVideos(
+              query: currentQuery,
+              page: 1,
+            );
 
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
 
       setState(() {
         videos = result.videos;
@@ -66,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
         isLoading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
 
       setState(() {
         errorMessage = error.toString();
@@ -78,18 +94,23 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> loadMoreVideos() async {
     if (isLoadingMore || !hasNextPage || isLoading) return;
 
+    final requestVersion = _requestVersion;
+    final currentQuery = searchQuery.trim();
+    final nextPage = currentPage + 1;
+
     setState(() {
       isLoadingMore = true;
     });
 
     try {
-      final nextPage = currentPage + 1;
+      final result = currentQuery.isEmpty
+          ? await apiService.getVideos(page: nextPage)
+          : await apiService.searchVideos(
+              query: currentQuery,
+              page: nextPage,
+            );
 
-      final result = await apiService.getVideos(
-        page: nextPage,
-      );
-
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
 
       setState(() {
         videos.addAll(result.videos);
@@ -98,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
         isLoadingMore = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
 
       setState(() {
         isLoadingMore = false;
@@ -106,6 +127,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
       debugPrint('Failed to load more videos: $error');
     }
+  }
+
+  void onSearchChanged(String value) {
+    searchQuery = value;
+
+    // Invalidate any older requests.
+    _requestVersion++;
+
+    _searchDebounce?.cancel();
+
+    setState(() {
+      isLoading = true;
+      isLoadingMore = false;
+      errorMessage = null;
+      videos = [];
+      currentPage = 1;
+      hasNextPage = true;
+    });
+
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 450),
+      () {
+        loadVideos(query: value);
+      },
+    );
   }
 
   Widget _buildVideoContent() {
@@ -145,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: loadVideos,
+              onPressed: () => loadVideos(query: searchQuery),
               child: const Text('Try Again'),
             ),
           ],
@@ -153,16 +199,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final filteredVideos = videos.where((video) {
-      return video.title.toLowerCase().contains(
-        searchQuery.toLowerCase(),
-      );
-    }).toList();
-
-    if (filteredVideos.isEmpty) {
+    if (videos.isEmpty) {
       return Center(
         child: Text(
-          videos.isEmpty
+          searchQuery.trim().isEmpty
               ? 'No videos available.'
               : 'No matching videos found.',
           style: const TextStyle(
@@ -186,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return GridView.builder(
           controller: scrollController,
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          itemCount: filteredVideos.length + (isLoadingMore ? 1 : 0),
+          itemCount: videos.length + (isLoadingMore ? 1 : 0),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 20,
@@ -194,7 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
             childAspectRatio: 1.15,
           ),
           itemBuilder: (context, index) {
-            if (index >= filteredVideos.length) {
+            if (index >= videos.length) {
               return const Center(
                 child: CircularProgressIndicator(
                   color: Colors.redAccent,
@@ -203,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             return VideoCard(
-              video: filteredVideos[index],
+              video: videos[index],
             );
           },
         );
@@ -213,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     searchController.dispose();
     scrollController.dispose();
     super.dispose();
@@ -268,11 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(
                   color: Colors.white,
                 ),
-                onChanged: (value) {
-                  setState(() {
-                    searchQuery = value;
-                  });
-                },
+                onChanged: onSearchChanged,
                 decoration: InputDecoration(
                   hintText: 'Search videos...',
                   hintStyle: const TextStyle(
@@ -282,6 +319,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     Icons.search,
                     color: Colors.white54,
                   ),
+                  suffixIcon: searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white54,
+                          ),
+                          onPressed: () {
+                            searchController.clear();
+                            onSearchChanged('');
+                          },
+                        )
+                      : null,
                   filled: true,
                   fillColor: const Color(0xFF202020),
                   border: OutlineInputBorder(

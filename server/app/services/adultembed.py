@@ -13,7 +13,7 @@ async def fetch_videos(page: int = 1, page_size: int = 20):
     }
 
     headers = {
-        "X-Site-URL": "http://localhost:8000"
+        "X-Site-URL": "http://localhost:5000"
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -85,3 +85,38 @@ async def search_videos(
         "previous": data.get("previous"),
         "results": videos,
     }
+
+
+async def fetch_video_details(video_id: int):
+    url = f"{BASE_URL}/videos/{video_id}/"
+
+    headers = {
+        "X-Site-URL": "http://localhost:5000"
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            url,
+            headers=headers,
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+
+
+async def fetch_embed_url(video_id: int):
+    url = f"{BASE_URL}/videos/{video_id}/get-embed/"
+
+    headers = {
+        "X-Site-URL": "http://localhost:5000"
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            url,
+            headers=headers,
+        )
+
+        response.raise_for_status()
+        return response.json()
