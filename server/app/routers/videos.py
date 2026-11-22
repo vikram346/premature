@@ -1,111 +1,71 @@
 
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, HTTPException, Query
 import httpx
 
-from app.services.adultembed import (
+from app.services.video_api import (
     fetch_videos,
-    search_videos,
     fetch_video_details,
-    fetch_embed_url,
+    fetch_video_streams,
 )
 
-router = APIRouter(
-    prefix="/videos",
-    tags=["Videos"],
-)
+router = APIRouter(prefix="/videos", tags=["Videos"])
 
 
-# Browse videos
+def handle_error(error):
+    if isinstance(error, httpx.HTTPStatusError):
+        return HTTPException(
+            status_code=error.response.status_code,
+            detail="Video API request failed",
+        )
+
+    if isinstance(error, httpx.RequestError):
+        return HTTPException(
+            status_code=502,
+            detail="Unable to connect to video API",
+        )
+
+    return HTTPException(
+        status_code=500,
+        detail=str(error),
+    )
+
+
 @router.get("/")
 async def get_videos(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=100),
 ):
     try:
         return await fetch_videos(
             page=page,
             page_size=page_size,
-        )
-
-    except httpx.HTTPError as error:
-        raise HTTPException(
-            status_code=502,
-            detail=f"External API request failed: {error}",
-        )
-
-
-# Search videos
-@router.get("/search")
-async def search_video_catalogue(
-    q: str = Query(min_length=1),
-    page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=20, ge=1, le=100),
-):
-    try:
-        return await search_videos(
             query=q,
-            page=page,
-            per_page=per_page,
         )
-
-    except httpx.HTTPError as error:
-        raise HTTPException(
-            status_code=502,
-            detail=f"External API search failed: {error}",
-        )
+    except (httpx.HTTPStatusError, httpx.RequestError, RuntimeError) as e:
+        raise handle_error(e)
 
 
-# Get video details
+@router.get("/{video_id}/streams")
+async def get_video_streams(video_id: int):
+    try:
+        data = await fetch_video_streams(video_id)
+
+        if not data["sources"]:
+            raise HTTPException(
+                status_code=404,
+                detail="This video is currently unavailable.",
+            )
+
+        return data
+
+    except (httpx.HTTPStatusError, httpx.RequestError, RuntimeError) as e:
+        raise handle_error(e)
+
+
 @router.get("/{video_id}")
-async def get_video_details(
-    video_id: int = Path(ge=1),
-):
+async def get_video_details(video_id: int):
     try:
-        return await fetch_video_details(
-            video_id=video_id,
-        )
-
-    except httpx.HTTPStatusError as error:
-        if error.response.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail="Video not found or no longer playable",
-            )
-
-        raise HTTPException(
-            status_code=502,
-            detail="External API request failed",
-        )
-
-    except httpx.HTTPError:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not connect to external API",
-        )
-
-
-# Get signed video embed URL
-@router.post("/{video_id}/embed")
-async def get_video_embed(
-    video_id: int = Path(ge=1),
-):
-    try:
-        return await fetch_embed_url(video_id)
-
-    except httpx.HTTPStatusError as error:
-        if error.response.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail="Video is no longer playable",
-            )
-
-        raise HTTPException(
-            status_code=502,
-            detail="External API request failed",
-        )
-
-    except httpx.HTTPError:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not connect to external API",
-        )
+        return await fetch_video_details(video_id)
+    except (httpx.HTTPStatusError, httpx.RequestError, RuntimeError) as e:
+        raise handle_error(e)
