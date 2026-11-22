@@ -6,76 +6,54 @@ import '../models/video_page.dart';
 
 class ApiService {
   static const String baseUrl = String.fromEnvironment(
-  'API_URL',
-  defaultValue: 'http://localhost:8000',
-);
+    'API_URL',
+    defaultValue: 'http://127.0.0.1:8000',
+  );
 
-  Future<VideoPage> getVideos({
-    int page = 1,
-    int pageSize = 20,
-  }) async {
-    final url = Uri.parse('$baseUrl/videos/').replace(
-      queryParameters: {
-        'page': page.toString(),
-        'page_size': pageSize.toString(),
-      },
-    );
+  
+Future<VideoPage> getVideos({
+  int page = 1,
+  int pageSize = 20,
+  String query = '',
+}) async {
+  final parameters = <String, String>{
+    'page': page.toString(),
+    'page_size': pageSize.toString(),
+  };
 
-    return _fetchPage(url);
+  if (query.trim().isNotEmpty) {
+    parameters['q'] = query.trim();
   }
 
-  Future<VideoPage> searchVideos({
-    required String query,
-    int page = 1,
-    int perPage = 20,
-  }) async {
-    final url = Uri.parse('$baseUrl/videos/search').replace(
-      queryParameters: {
-        'q': query,
-        'page': page.toString(),
-        'per_page': perPage.toString(),
-      },
-    );
-
-    return _fetchPage(url);
-  }
-
-  Future<VideoPage> _fetchPage(Uri url) async {
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return VideoPage.fromJson(data);
-    }
-
-    throw Exception(
-      'Failed to load videos: ${response.statusCode}',
-    );
-  }
-
-  Future<Map<String, dynamic>> getVideoDetails(int videoId) async {
-  final url = Uri.parse('$baseUrl/videos/$videoId');
+  final url = Uri.parse('$baseUrl/videos/').replace(
+    queryParameters: parameters,
+  );
 
   final response = await http.get(url);
 
   if (response.statusCode == 200) {
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return VideoPage.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
-  throw Exception(
-    'Failed to load video details: ${response.statusCode}',
-  );
+  throw Exception('Failed to load videos: ${response.statusCode}');
 }
 
-Future<Map<String, dynamic>> getVideoEmbed(int videoId) async {
-  final url = Uri.parse('$baseUrl/videos/$videoId/embed');
 
-  final response = await http.post(url);
+  Future<Map<String, dynamic>> getVideoStreams(int videoId) async {
+    final url = Uri.parse('$baseUrl/videos/$videoId/streams');
 
-  if (response.statusCode == 200) {
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final response = await http.get(url).timeout(
+      const Duration(seconds: 30),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw Exception(
+      'Failed to load video streams: ${response.statusCode} ${response.body}',
+    );
   }
-
-  throw Exception('Failed to load video player: ${response.statusCode}');
-}
 }

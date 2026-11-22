@@ -1,3 +1,4 @@
+
 import 'video.dart';
 
 class VideoPage {
@@ -10,13 +11,16 @@ class VideoPage {
   });
 
   factory VideoPage.fromJson(Map<String, dynamic> json) {
-    final results = json['results'] as List<dynamic>;
+    final items = json['items'] as List<dynamic>? ?? [];
+
+    final pagination = json['pagination'] as Map<String, dynamic>? ?? {};
 
     return VideoPage(
-      videos: results
-          .map((item) => Video.fromJson(item as Map<String, dynamic>))
+      videos: items
+          .whereType<Map<String, dynamic>>()
+          .map((item) => Video.fromJson(item))
           .toList(),
-      hasNextPage: json['next'] != null,
+      hasNextPage: pagination['has_next'] == true,
     );
   }
 }

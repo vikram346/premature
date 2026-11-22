@@ -19,20 +19,18 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController searchController = TextEditingController();
   final ApiService apiService = ApiService();
 
+  Timer? _searchDebounce;
+
   List<Video> videos = [];
 
-  String searchQuery = '';
-
   int currentPage = 1;
-  int _requestVersion = 0;
 
   bool isLoading = true;
   bool isLoadingMore = false;
   bool hasNextPage = true;
 
+  String searchQuery = '';
   String? errorMessage;
-
-  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -43,8 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
     scrollController.addListener(() {
       if (!scrollController.hasClients) return;
 
-      if (scrollController.position.pixels >=
-              scrollController.position.maxScrollExtent - 300 &&
+      if (scrollController.position.extentAfter < 400 &&
           !isLoading &&
           !isLoadingMore &&
           hasNextPage) {
@@ -53,28 +50,34 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> loadVideos({String? query}) async {
-    final requestVersion = ++_requestVersion;
-    final currentQuery = (query ?? searchQuery).trim();
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
 
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 500),
+      () {
+        searchQuery = value.trim();
+        loadVideos();
+      },
+    );
+  }
+
+  Future<void> loadVideos() async {
     setState(() {
       isLoading = true;
       isLoadingMore = false;
       errorMessage = null;
       currentPage = 1;
       hasNextPage = true;
-      videos = [];
     });
 
     try {
-      final result = currentQuery.isEmpty
-          ? await apiService.getVideos(page: 1)
-          : await apiService.searchVideos(
-              query: currentQuery,
-              page: 1,
-            );
+      final result = await apiService.getVideos(
+        page: 1,
+        query: searchQuery,
+      );
 
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted) return;
 
       setState(() {
         videos = result.videos;
@@ -82,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
         isLoading = false;
       });
     } catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted) return;
 
       setState(() {
         errorMessage = error.toString();
@@ -94,23 +97,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> loadMoreVideos() async {
     if (isLoadingMore || !hasNextPage || isLoading) return;
 
-    final requestVersion = _requestVersion;
-    final currentQuery = searchQuery.trim();
-    final nextPage = currentPage + 1;
-
     setState(() {
       isLoadingMore = true;
     });
 
     try {
-      final result = currentQuery.isEmpty
-          ? await apiService.getVideos(page: nextPage)
-          : await apiService.searchVideos(
-              query: currentQuery,
-              page: nextPage,
-            );
+      final nextPage = currentPage + 1;
 
-      if (!mounted || requestVersion != _requestVersion) return;
+      final result = await apiService.getVideos(
+        page: nextPage,
+        query: searchQuery,
+      );
+
+      if (!mounted) return;
 
       setState(() {
         videos.addAll(result.videos);
@@ -119,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
         isLoadingMore = false;
       });
     } catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!mounted) return;
 
       setState(() {
         isLoadingMore = false;
@@ -127,31 +126,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       debugPrint('Failed to load more videos: $error');
     }
-  }
-
-  void onSearchChanged(String value) {
-    searchQuery = value;
-
-    // Invalidate any older requests.
-    _requestVersion++;
-
-    _searchDebounce?.cancel();
-
-    setState(() {
-      isLoading = true;
-      isLoadingMore = false;
-      errorMessage = null;
-      videos = [];
-      currentPage = 1;
-      hasNextPage = true;
-    });
-
-    _searchDebounce = Timer(
-      const Duration(milliseconds: 450),
-      () {
-        loadVideos(query: value);
-      },
-    );
   }
 
   Widget _buildVideoContent() {
@@ -185,13 +159,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               errorMessage!,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white54,
-              ),
+              style: const TextStyle(color: Colors.white54),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => loadVideos(query: searchQuery),
+              onPressed: loadVideos,
               child: const Text('Try Again'),
             ),
           ],
@@ -202,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (videos.isEmpty) {
       return Center(
         child: Text(
-          searchQuery.trim().isEmpty
+          searchQuery.isEmpty
               ? 'No videos available.'
               : 'No matching videos found.',
           style: const TextStyle(
@@ -217,24 +189,35 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, constraints) {
         final width = constraints.maxWidth;
 
-        final crossAxisCount = width >= 1100
-            ? 4
-            : width >= 700
+        final crossAxisCount = width < 600
+            ? 2
+            : width < 1000
                 ? 3
-                : 2;
+                : 4;
+
+        const horizontalPadding = 24.0;
+        const spacing = 10.0;
+
+        final cardWidth = (width -
+                horizontalPadding -
+                spacing * (crossAxisCount - 1)) /
+            crossAxisCount;
+
+        final cardHeight = (cardWidth * 9 / 16) + 82;
 
         return GridView.builder(
           controller: scrollController,
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          itemCount: videos.length + (isLoadingMore ? 1 : 0),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          physics: const ClampingScrollPhysics(),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 20,
-            mainAxisSpacing: 24,
-            childAspectRatio: 1.15,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: 8,
+            mainAxisExtent: cardHeight,
           ),
+          itemCount: videos.length + (isLoadingMore ? 1 : 0),
           itemBuilder: (context, index) {
-            if (index >= videos.length) {
+            if (index == videos.length) {
               return const Center(
                 child: CircularProgressIndicator(
                   color: Colors.redAccent,
@@ -242,9 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }
 
-            return VideoCard(
-              video: videos[index],
-            );
+            return VideoCard(video: videos[index]);
           },
         );
       },
@@ -266,11 +247,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Top navigation
             Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 16,
+                horizontal: 20,
+                vertical: 12,
               ),
               child: Row(
                 children: [
@@ -286,11 +266,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Spacer(),
                   const Text(
                     'Home',
-                    style: TextStyle(
-                      color: Colors.white,
-                    ),
+                    style: TextStyle(color: Colors.white),
                   ),
-                  const SizedBox(width: 24),
+                  const SizedBox(width: 20),
                   const Icon(
                     Icons.person_outline,
                     color: Colors.white,
@@ -298,70 +276,61 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-
-            const SizedBox(height: 12),
-
-            // Search bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: TextField(
-                controller: searchController,
-                style: const TextStyle(
-                  color: Colors.white,
-                ),
-                onChanged: onSearchChanged,
-                decoration: InputDecoration(
-                  hintText: 'Search videos...',
-                  hintStyle: const TextStyle(
-                    color: Colors.white54,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search,
-                    color: Colors.white54,
-                  ),
-                  suffixIcon: searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white54,
-                          ),
-                          onPressed: () {
-                            searchController.clear();
-                            onSearchChanged('');
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: const Color(0xFF202020),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: SizedBox(
+                height: 48,
+                child: TextField(
+                  controller: searchController,
+                  style: const TextStyle(color: Colors.white),
+                  onChanged: _onSearchChanged,
+                  decoration: InputDecoration(
+                    hintText: 'Search videos...',
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: Colors.white54,
+                    ),
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white54,
+                            ),
+                            onPressed: () {
+                              searchController.clear();
+                              _onSearchChanged('');
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFF202020),
+                    contentPadding: EdgeInsets.zero,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
               ),
             ),
-
-            const SizedBox(height: 22),
-
-            // Section heading
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Discover Videos',
-                  style: TextStyle(
+                  searchQuery.isEmpty
+                      ? 'Discover Videos'
+                      : 'Search Results',
+                  style: const TextStyle(
                     color: Color(0xFFCCCCCC),
-                    fontSize: 29,
+                    fontSize: 25,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ),
-
-            const SizedBox(height: 18),
-
-            // Video grid
             Expanded(
               child: _buildVideoContent(),
             ),

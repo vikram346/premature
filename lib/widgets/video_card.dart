@@ -1,82 +1,109 @@
 
 import 'package:flutter/material.dart';
-import 'package:web/web.dart' as web;
 
+import '../services/api_service.dart';
 import '../models/video.dart';
 import '../screens/videoscreen.dart';
-import '../services/api_service.dart';
 
 class VideoCard extends StatelessWidget {
   final Video video;
 
-  const VideoCard({
-    super.key,
-    required this.video,
-  });
+  const VideoCard({super.key, required this.video});
 
   @override
   Widget build(BuildContext context) {
-    final imageUrl =
-        '${ApiService.baseUrl}/images/proxy?url=${Uri.encodeComponent(video.thumbnail)}';
+    return Card(
+      color: const Color(0xFF1C1C1C),
+      clipBehavior: Clip.antiAlias,
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => VideoScreen(video: video),
+            ),
+          );
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: _buildThumbnail(),
+            ),
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VideoScreen(video: video),
+            Padding(
+              padding: const EdgeInsets.all(9),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    video.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${video.duration} • ${video.views} views',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnail() {
+    if (video.thumbnail.isEmpty) {
+      return _placeholder();
+    }
+
+    return Image.network(
+      '${ApiService.baseUrl}/images/proxy?url=${Uri.encodeComponent(video.thumbnail)}',
+      fit: BoxFit.cover,
+      width: double.infinity,
+      errorBuilder: (context, error, stackTrace) {
+        return _placeholder();
+      },
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+
+        return const ColoredBox(
+          color: Colors.black,
+          child: Center(
+            child: CircularProgressIndicator(
+              color: Colors.redAccent,
+              strokeWidth: 2,
+            ),
           ),
         );
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: HtmlElementView.fromTagName(
-                tagName: 'img',
-                onElementCreated: (element) {
-                  final image = element as web.HTMLImageElement;
+    );
+  }
 
-                  image
-                    ..src = imageUrl
-                    ..alt = video.title
-                    ..style.width = '100%'
-                    ..style.height = '100%'
-                    ..style.objectFit = 'cover'
-                    ..style.pointerEvents = 'none';
-                },
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          Text(
-            video.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          Text(
-            '${video.views} views • ${video.duration}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-            ),
-          ),
-        ],
+  Widget _placeholder() {
+    return const ColoredBox(
+      color: Colors.black,
+      child: Center(
+        child: Icon(
+          Icons.broken_image,
+          color: Colors.white54,
+        ),
       ),
     );
   }
